@@ -24,3 +24,5 @@ Compare complete paired task IDs only, with identical benchmark bytes, scoring p
 
 ## Versioning
 Benchmark changes, rubric changes and policy changes alter fingerprints. A different hash is a different cohort even if a human mistakenly reuses a version string. Finished runs and snapshots are append-only through the application. Database administrators retain physical write authority; use backups and external signed snapshots for stronger guarantees.
+
+Smoke samples retain task-level scores only. They have no composite, bootstrap interval or ranking eligibility, including samples whose size equals the full benchmark.

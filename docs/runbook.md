@@ -1,37 +1,41 @@
-# Operator runbook
-
-## Database setup and recovery
-
-Use PostgreSQL for shared execution. Apply `chemagent init-db` before starting workers or the web API. The initial migration creates all registry, run, artifact and reserved account tables. Before any production upgrade, take a database backup and test the migration on a copy.
-
-`chemagent seed-demo` produces three actual runs and an immutable snapshot. `chemagent evaluate` adds a new run. It never replaces an older finished run. Historical UI values may span different cohorts; do not read them as improvement without compatibility checks.
-
-If a provider timeout or interruption leaves a partial run, obtain its ID from structured logs or the database and rerun with `--resume ID`. Keep all inputs, software and configuration unchanged. After an unclean process termination, a running run may also be resumed once its advisory/POSIX lock is released. A completed or changed run cannot be resumed. Never manually edit a finished run to force resume.
+# Operations reference
 
 ## Configuration
 
-`configs/evaluation.yaml` controls seed, temperature, output limit, permitted tools, timeout and retry count. CLI `--model` and `--benchmark` override those two fields. The provider is responsible for honoring its timeout; current mocks return locally and future API adapters must implement bounded network requests. The runner retries transport timeout/connection errors; invalid structured output is scored as a failure rather than retried into a better score.
+| Setting | Purpose | Default |
+|---|---|---|
+| `DATABASE_URL` | SQLAlchemy database connection | `sqlite:///./chemagent.db` |
+| `CHEMAGENT_ROOT` | Checkout containing configuration, benchmark and migrations | Package checkout root |
+| `API_URL` | Server-side frontend backend destination | `http://127.0.0.1:8000` |
+| `OLLAMA_BASE_URL` | Evaluator's Ollama endpoint | `http://127.0.0.1:11434` |
+| `SUBMISSION_TOKEN` | Optional bearer token for API intake | Intake disabled |
 
-`configs/scoring.yaml` defines the active category profile, reliability weights and bootstrap count. Changing it creates a different run cohort. `DATABASE_URL` is a process environment variable. API credentials belong in provider-specific environment variables when adapters are implemented. `.env.example` is a template; Python does not automatically read `.env`.
+Python processes read environment variables directly; `.env` is not loaded automatically. Frontend proxy destinations are captured at build time. The Compose build uses `http://backend:8000`.
 
-## Web operation
+`configs/evaluation.yaml` defines mock settings. `configs/ollama.yaml` defines the pinned local model and generation budget. CLI model and benchmark flags override configuration only when supplied. `--sample-size` creates a non-ranking smoke evaluation.
 
-For development use `npm run dev`. For a production Next build use the provided frontend Dockerfile, which copies the standalone server and static assets. `API_URL` is server-side only. Rewrites are captured at build time; build with the backend destination appropriate to the deployment. The Compose image uses `http://backend:8000`.
+## Database lifecycle
 
-HTTP smoke tests in `scripts/http_smoke.mjs` start a backend and the built Next standalone server locally, inspect rendered routes, request CSS assets, and exercise comparison API forwarding. They do not replace browser interaction or visual QA.
+`chemagent init-db` applies Alembic migrations without dropping existing data. `chemagent seed-demo` adds three mock runs and a snapshot. Each evaluation adds a retained run. Database upgrades require normal backup and migration validation practices.
 
-## Cost and latency
+A partial run can resume with `chemagent evaluate --config CONFIG --resume RUN_ID`, using identical settings, sample size and software. A completed or incompatible run is rejected. Process termination releases the local or PostgreSQL run lock.
 
-Mock cost is exactly zero and token counts are unknown/null. Performance per dollar is null when cost is zero or unknown. Wall time is observed local elapsed time including task retries; do not compare it with commercial model latency. Tool call names are captured per response and checked against permissions.
+## Runtime and exports
 
-## Private evaluation
+Ollama health metadata is checked before a run. The installed model digest is checked before each generation. Missing or changed models fail without substituting another provider. Timeout and connection failures are retried within the configured budget. HTTP protocol errors and malformed model output are not treated as retryable generation attempts.
 
-Private data must remain outside the repository. The private store requires all-private visibility and mock providers reject private data. Public APIs omit hidden task bodies and results. This path is a storage abstraction; production private evaluation additionally needs real adapters, access control, worker isolation, secrets management and explicit publication policy.
+`chemagent evaluate --output-dir DIRECTORY` writes a ZIP in normal completion and handled failure paths. Abrupt process termination may prevent that export; committed checkpoints remain in the database. `chemagent export RUN_ID PATH.zip` exports an existing public run. Existing artifact files are not overwritten.
 
-## Submission preview
+Raw token counts and elapsed task time are retained. Local compute cost is null; mock cost is zero. Neither produces a performance-per-dollar value.
 
-The web portal shows that intake is not yet open. Operators may set `SUBMISSION_TOKEN` to accept typed submissions by bearer-authenticated POST. No files or external URLs are fetched. Input records enter submitted status. Reviewer assignment, approval/rejection transitions, accounts and RBAC are future work.
+## Deployment and intake
 
-## Release checklist
+Compose provides local database, initializer, backend and frontend services. PostgreSQL storage persists across restarts. `docker compose down -v` removes the database volume.
 
-Run Python tests on SQLite and a disposable PostgreSQL database, coverage, lint, formatting, typing, public-data integrity checks, dependency audits, TypeScript, frontend lint and build. Run Compose CI and browser interaction/visual QA on a host that supports them before public deployment. Record failures and unavailable checks in release status. Do not turn passing software tests into claims of scientific validation.
+Public researcher intake remains closed. The optional submission API stores typed records in submitted status and does not fetch supplied URLs. Accounts, reviewer assignment and approval transitions are not implemented.
+
+## Quality workflows
+
+The quality workflow checks Python and TypeScript, migrated SQLite and PostgreSQL databases, dependency audits, public task integrity, Compose startup and live application HTTP behavior. HTTP checks inspect server-rendered pages, CSS and API forwarding; browser interaction and visual review remain separate checks.
+
+The manual benchmark workflow performs local model inference and retains logs, the SQLite database and checksummed run archives for 30 days. Its results remain downloadable artifacts until a deployment explicitly loads or publishes them.

@@ -17,6 +17,13 @@ from chemagent.database.models import (
 from chemagent.statistics.bootstrap import compare_paired
 
 DEMO_NOTICE = "DEMONSTRATION DATA — NOT REAL BENCHMARK RESULTS"
+REAL_NOTICE = "EXPERIMENTAL MODEL RESULTS — PUBLIC SYNTHETIC DEVELOPMENT SET"
+
+
+def result_notice(provenance: dict[str, Any]) -> str:
+    if provenance.get("scope") == "smoke":
+        return "SMOKE TEST — INCOMPLETE BENCHMARK COVERAGE; NOT RANKED"
+    return DEMO_NOTICE if provenance["provider"].get("demo") else REAL_NOTICE
 
 
 def leaderboard(session: Session, cohort: str | None = None) -> dict[str, Any]:
@@ -27,7 +34,11 @@ def leaderboard(session: Session, cohort: str | None = None) -> dict[str, Any]:
             .order_by(EvaluationRun.completed_at.desc())
         )
     )
-    runs = [r for r in runs if r.provenance["visibility"] == "public"]
+    runs = [
+        r
+        for r in runs
+        if r.provenance["visibility"] == "public" and r.provenance.get("rank_eligible", True)
+    ]
     cohorts = list(dict.fromkeys(r.cohort for r in runs))
     selected = cohort or (cohorts[0] if cohorts else None)
     seen: set[str] = set()
@@ -51,7 +62,9 @@ def leaderboard(session: Session, cohort: str | None = None) -> dict[str, Any]:
         )
     rows.sort(key=lambda r: r["summary"]["score"]["mean"], reverse=True)
     return {
-        "notice": DEMO_NOTICE,
+        "notice": result_notice(next(r.provenance for r in runs if r.cohort == selected))
+        if rows
+        else "No completed evaluations in this cohort",
         "profile": "ChemAgentBench starter index",
         "cohort": selected,
         "available_cohorts": cohorts,
@@ -89,7 +102,7 @@ def run_detail(session: Session, run_id: str) -> dict[str, Any] | None:
         "provenance": run.provenance,
         "summary": run.summary,
         "tasks": rows,
-        "notice": DEMO_NOTICE,
+        "notice": result_notice(run.provenance),
     }
 
 
@@ -97,6 +110,8 @@ def comparison(session: Session, left_id: str, right_id: str) -> dict[str, Any]:
     left, right = session.get(EvaluationRun, left_id), session.get(EvaluationRun, right_id)
     if left is None or right is None or left.status != "completed" or right.status != "completed":
         raise ValueError("Two completed runs are required")
+    if not all(r.provenance.get("rank_eligible", True) for r in [left, right]):
+        raise ValueError("Smoke runs cannot be compared as full benchmark evaluations")
     if left.cohort != right.cohort or any(
         r.provenance["visibility"] != "public" for r in [left, right]
     ):

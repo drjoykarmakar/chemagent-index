@@ -25,6 +25,7 @@ class ProviderResponse:
     output_tokens: int | None = None
     cost_usd: float | None = None
     tool_calls: list[str] = field(default_factory=list)
+    finish_reason: str | None = None
 
 
 class BaseModelAdapter(Protocol):

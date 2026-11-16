@@ -1,43 +1,37 @@
 # ChemAgent Index
 
-**Independent Benchmarking and Ranking of AI Agents for Chemistry**
+Open evaluation infrastructure for AI systems in chemistry. Version **0.2.0** supports local open-model inference, versioned tasks, independent scoring, uncertainty estimates and downloadable evidence for every run.
 
-ChemAgent Index v0.1.0 is an open research infrastructure foundation: versioned chemistry tasks, independent structured scoring, RDKit checks, reproducible runs, uncertainty estimates, a CLI/API and a public-style web interface.
+ChemAgentBench v0.1.0 contains **60 public synthetic development tasks** across six domains. Tasks have high contamination risk and await independent expert review. Results describe this collection; they do not establish general chemistry competence or experimental validity. Demonstration systems and model inference results are labeled separately and never share a ranking cohort.
 
-> **DEMONSTRATION DATA — NOT REAL BENCHMARK RESULTS.** DemoChem-A/B/C are deterministic rule solvers with controlled errors. Their scores are computed by the evaluation engine, never embedded in the website. The 60 public synthetic tasks are pending independent expert review and are not evidence of real-world scientific validity.
+## Evaluation
 
-## Why ChemAgent Index
+The **Run benchmark** GitHub Actions workflow evaluates Qwen2.5 0.5B through a pinned Ollama runtime. It requires no provider API key. The workflow has two scopes:
 
-Scientific fluency is not chemical correctness. Every ranking should expose the tasks, conditions, validation failures, scoring rules, versions and uncertainty behind it. This project creates those audit boundaries before adding commercial models or institutional claims.
+| Scope | Tasks | Output | Ranking eligibility |
+|---|---:|---|---|
+| `smoke` | 5 | Responses, task scores, validation and provenance | Excluded |
+| `full` | 60 | Task evidence and six-category aggregate with intervals | Complete runs only |
 
-## Quick start — Docker
+Workflow runs retain artifacts for 30 days. Each run archive contains `run.json`, `config.json`, `summary.json`, `responses.jsonl`, `scores.csv`, `validations.jsonl` and a checksum manifest. Partial evaluations retain completed checkpoints. The workflow also retains its evaluation database and logs. Artifacts are not automatically published to a website. GitHub Actions compute availability and billing depend on the repository's plan.
 
-Install Docker Desktop with Compose, unzip this repository and enter its directory:
+Model identity is pinned by its complete manifest digest in [`configs/ollama.yaml`](configs/ollama.yaml). A changed model tag fails verification. Runtime version, model digest, generation parameters, task selection, software identity and scoring policy are recorded with each run. Local inference costs are unknown, not assumed to be zero.
+
+## Local application
+
+Requirements: Docker with Compose, or Python 3.12 and Node 22+.
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:3000 for the website, http://localhost:8000/docs for OpenAPI. Compose starts PostgreSQL, applies migrations, executes three real mock evaluations, saves a leaderboard snapshot and starts both application services. No API keys are required. First build downloads dependencies. PostgreSQL data persists in a named volume.
+The application is available at [localhost:3000](http://localhost:3000), with API documentation at [localhost:8000/docs](http://localhost:8000/docs). Compose initializes PostgreSQL and three clearly labeled demonstration evaluations. Data persists in a named volume. The default Compose configuration binds local ports and uses development credentials.
 
-```bash
-docker compose exec backend chemagent evaluate --model demo-agent --benchmark chemagentbench-v0.1
-docker compose exec backend chemagent leaderboard
-docker compose down
-```
-
-The default password and localhost bindings are for local development. Do not expose this configuration publicly. Restarting the initialization service creates new retained runs, not overwrites. `docker compose down -v` deletes the development database; use only intentionally.
-
-**Verification boundary:** PostgreSQL 16.2 and SQLite tests passed in the build environment. Docker itself was unavailable there; the included Compose CI job is the first container-level validation gate.
-
-## Quick start — local checkout
-
-Reference environment: Python **3.12**, Node **22+**. Exact Python locks were resolved on Python 3.12; Python 3.11+ is allowed by the package, but those other versions were not release-tested.
+A Python checkout uses SQLite by default:
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 pip install -r requirements-dev.lock
 pip install -e . --no-deps
 chemagent init-db
@@ -45,93 +39,60 @@ chemagent seed-demo
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal:
+The frontend development server starts with `npm ci` and `npm run dev` in `frontend/`. `DATABASE_URL` selects another database; `API_URL` selects the backend for the Next.js server. Configuration variables are listed in [the operations reference](docs/runbook.md).
+
+## Local model evaluation
+
+The Ollama server must expose the model specified by the configuration at `http://127.0.0.1:11434` (or `OLLAMA_BASE_URL`).
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+ollama pull qwen2.5:0.5b
+chemagent evaluate --config configs/ollama.yaml --sample-size 5 --output-dir results
+chemagent evaluate --config configs/ollama.yaml --output-dir results
+chemagent export RUN_ID evaluation.zip
 ```
 
-Local Python development uses `sqlite:///./chemagent.db` by default. To use PostgreSQL, set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` **before** migrations, evaluations and API startup. Operate from the repository root or set `CHEMAGENT_ROOT` explicitly. Keep credentials in environment variables; `.env` is not automatically loaded by the Python process.
+The first evaluation is a smoke test; the second covers the full benchmark. `--resume RUN_ID` retains successful checkpoints and requires unchanged scientific and software inputs. Completed runs cannot be resumed or overwritten. Invalid model JSON is captured and scored; it is not retried into a better answer. Only transport failures trigger bounded retries.
 
-## Architecture
+`MockAdapter` remains available for software tests and demonstrations. `OllamaAdapter` performs local model inference without tool execution. Other named provider classes are unsupported extension contracts.
 
-```text
-chemagent/       benchmark contracts, providers, RDKit, scoring, statistics, runner, database
-backend/app/     FastAPI public projections and optional token-protected intake
-frontend/        Next.js, TypeScript, React, Tailwind and institutional CSS
-benchmarks/      original synthetic tasks, manifest, JSON Schema and data license
-configs/         versioned evaluation settings and scoring weights
-migrations/      explicit Alembic migration history
-scripts/         dataset rebuild, integrity checks, dependency locks, smoke tests
-tests/          core, API, persistence, retry and comparison tests
-docs/           architecture, schema, methods, scoring, runbook and release evidence
-```
+## Benchmark coverage
 
-See [architecture](docs/architecture.md), [database schema](docs/database.md) and [benchmark contract](benchmarks/schemas/task.schema.json). Provider requests contain public inputs and schema only. Reference answers remain inside the trusted evaluation layer.
-
-## Benchmark categories
-
-| Starter domain | Tasks | Actual measurement |
+| Domain | Tasks | Measurement |
 |---|---:|---|
-| Chemistry reasoning | 10 | Dilution, concentration, yield, pH, equilibrium, Gibbs energy |
-| Medicinal chemistry | 10 | pIC50, efficiency proxy, selectivity and supplied property constraints |
-| Molecular validation | 10 | SMILES validity, formula, heavy atoms, donor counts |
-| Synthesis reasoning | 10 | Route yield, atom accounting, redox labels, limiting reagent |
-| Literature reliability | 10 | Closed-catalog matching, discrepancy and evidence-limit checks |
-| Stress tests | 10 | Valence, salt, false premise, unit and stereochemistry traps |
+| Chemistry reasoning | 10 | Concentration, yield, pH and energy calculations |
+| Medicinal chemistry | 10 | Property constraints, pIC50 and supplied tradeoffs |
+| Molecular validation | 10 | SMILES validity and molecular descriptors |
+| Synthesis reasoning | 10 | Route arithmetic and structured consistency |
+| Literature reliability | 10 | Closed-catalog matching and evidence limits |
+| Stress tests | 10 | Unit, structure, stereochemistry and premise traps |
 
-All are authored synthetic examples, openly released under CC0-1.0. All are introductory/intermediate, have high contamination risk, and await independent expert review. There are **zero private evaluation items**. This is not spectroscopy, molecular generation, retrosynthesis feasibility, clinical judgment or online literature benchmarking.
+The dataset is original synthetic material under CC0-1.0. There are no private items in this release. The complete task schema, provenance and limitations are retained in [`benchmarks/`](benchmarks/).
 
-## Running evaluations
+## Scoring and evidence
 
-```bash
-chemagent benchmark list
-chemagent model list
-chemagent validate 'C[C@H](O)C(=O)O'
-chemagent evaluate --model demo-agent --benchmark chemagentbench-v0.1
-chemagent evaluate --model demo-b --benchmark chemagentbench-v0.1
-chemagent leaderboard
-```
+The starter index is the equal-weight mean of six category scores. Full coverage is required; smoke results receive no composite score. Typed field rubrics and independent RDKit checks determine credit. Category-stratified cluster bootstrap uses 2,000 seeded resamples. Paired comparisons require compatible complete runs. The experimental reliability proxy and metadata completeness checklist are reported separately.
 
-Settings are in `configs/evaluation.yaml`. For a partial run, use exactly the same settings and model with `--resume RUN_ID`. Successful task checkpoints are retained. A changed dataset, policy, model, code, dependency environment or execution configuration prevents resume. Completed runs are immutable through application interfaces. POSIX locks protect local runs; PostgreSQL advisory locks protect shared-database workers.
-
-## Adding a model
-
-Implement `BaseModelAdapter` and register immutable model/version metadata. The runnable provider is `MockAdapter`. Named OpenAI, Anthropic, Gemini, OpenRouter and local adapters are **explicit, fail-closed Phase 2 extension points**, not functioning integrations. No untested API compatibility is implied. Record actual token usage and cost; unknown values are `null`, never zero estimates. The mock uses RDKit and must be evaluated on the model-plus-tools track.
-
-## Creating a benchmark
-
-Follow the strict `Task` schema, including provenance, explicit expected fields, severity and scoring weights, a template `cluster_id`, known ambiguity, and review status. Rebuild the manifest checksum whenever bytes change. The public development loader checks content integrity, count and duplicate prompt/input pairs. Molecular reference fixtures are independently checked in tests. Add a registered versioned store and preregister the profile; never silently change a public release.
-
-`PrivateTaskStore` requires a directory outside the repository and all-private task visibility. Mock evaluation rejects hidden tasks. The public API omits private bodies/results. This is a server-side storage boundary, not implemented encryption or enterprise tenancy.
-
-## Scoring and uncertainty
-
-The starter score is an equal-weight mean of six category scores, not the planned full ChemAgent Index. All categories must be present. Task rubrics reward typed, verifiable answers; prose fluency earns no score. Numerical answers receive graded credit beyond declared tolerance.
-
-Category-stratified cluster bootstrap uses 2,000 seeded resamples and reports 95% intervals, standard errors, counts and task sample variances. Paired comparisons require identical benchmark, scoring, environment, track and configuration hashes. Small numbers of clusters limit the strength of inference. CRI is an experimental severity-and-calibration proxy; the reproducibility score is a metadata checklist. Neither is double-counted in the starter composite. See [full scoring specification](docs/scoring.md).
-
-## Reproducibility
-
-Runs retain provider/model versions, benchmark and policy hashes, code hash, git commit when available, Python/RDKit/dependency versions, seed, temperature, tool permissions, timestamp, raw responses, response hashes, usage, validation failures and scores. Finished runs are retained; leaderboard snapshots store a content hash. Database administrators still have write authority; production signing and audit storage are future work.
+Detailed specifications: [scoring](docs/scoring.md), [methods](docs/methodology.md), [architecture](docs/architecture.md), [database](docs/database.md), and [evaluation artifacts](docs/evaluation.md).
 
 ## API
 
-- `GET /health`
-- `GET /api/v1/leaderboard?cohort=...`
-- `GET /api/v1/models` and `/models/{id}`
-- `GET /api/v1/agents`
-- `GET /api/v1/benchmarks` and `/benchmarks/{version_id}`
-- `GET /api/v1/evaluations/{run_id}`
-- `GET /api/v1/compare?left=RUN_ID&right=RUN_ID`
-- `GET /api/v1/snapshots/{id}`
-- `POST /api/v1/submissions` — disabled by default; optional operator bearer token, not full account/RBAC support
+| Endpoint | Resource |
+|---|---|
+| `GET /health` | Database health and software version |
+| `GET /api/v1/leaderboard` | Complete results in one compatible cohort |
+| `GET /api/v1/models`, `/models/{id}` | Registry and run history |
+| `GET /api/v1/agents` | Agent registry |
+| `GET /api/v1/benchmarks`, `/benchmarks/{id}` | Benchmark metadata and public tasks |
+| `GET /api/v1/evaluations` | Latest 100 public runs |
+| `GET /api/v1/evaluations/{id}` | Captured task evidence and provenance |
+| `GET /api/v1/evaluations/{id}/download` | Checksummed ZIP artifact |
+| `GET /api/v1/compare?left=ID&right=ID` | Compatible paired comparison |
+| `GET /api/v1/snapshots/{id}` | Retained leaderboard snapshot |
 
-OpenAPI is available at `/docs`. The UI includes rankings, profiles with task inspection, benchmark exploration, paired comparisons, methodology and an honest submission-status page. It reads stored results; an unavailable backend produces an explicit empty state.
+Private results are omitted from public projections and exports. Optional token-protected submission intake is disabled by default; accounts and review workflows are not implemented.
 
-## Quality checks
+## Development
 
 ```bash
 ruff check .
@@ -139,24 +100,8 @@ ruff format --check .
 mypy chemagent backend
 pytest --cov --cov-report=term-missing
 python scripts/check_public_data.py
-pip-audit -r requirements.lock --no-deps --disable-pip
-cd frontend
-npm run lint
-npm run typecheck
-npm run build
-npm audit --audit-level=moderate
 ```
 
-Set `TEST_DATABASE_URL` to an **isolated disposable PostgreSQL database** to repeat the database suite there. Tests clear application tables in that database. See [release verification](docs/release-status.md) for actual outcomes, including checks that could not run locally.
+Frontend checks are `npm run lint`, `npm run typecheck`, and `npm run build`. The quality workflow also runs PostgreSQL tests, dependency audits, Compose startup and live HTTP integration checks. `TEST_DATABASE_URL` must reference a disposable test database: database fixtures clear application tables.
 
-## Contributing and governance
-
-Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [conflict-of-interest policy](CONFLICT_OF_INTEREST.md) and [SECURITY](SECURITY.md). Maintainers’ systems receive no preferential treatment. No provider sponsorship may change scientific outcomes.
-
-## Citation
-
-Use [CITATION.cff](CITATION.cff) and cite the exact benchmark version, hashes and snapshot used. No DOI has been assigned. Add a Zenodo DOI only after a real archive exists.
-
-## Next milestones
-
-Phase 2: tested real-provider integration and repeated stochastic evaluations. Phase 3: live reference verification with provenance and separately evaluated claim support. Phase 4: expert-reviewed advanced chemistry, spectroscopy and route datasets. Phase 5: accounts, review workflows and production security. Phase 6: separately governed arena ratings. Phase 7: enterprise tenancy and private evaluations. No billing or institutional rankings are implemented.
+Contribution and project policies: [contributing](CONTRIBUTING.md), [governance](GOVERNANCE.md), [conflicts of interest](CONFLICT_OF_INTEREST.md), [security](SECURITY.md), [code of conduct](CODE_OF_CONDUCT.md). Citation metadata is in [CITATION.cff](CITATION.cff). Source code and documentation are MIT licensed.

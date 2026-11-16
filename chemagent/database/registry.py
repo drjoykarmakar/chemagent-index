@@ -9,6 +9,24 @@ from chemagent.database.models import Agent, Benchmark, BenchmarkTask, Benchmark
 from chemagent.providers.mock import DEMOS
 
 
+def register_model(session: Session, metadata: dict[str, Any]) -> None:
+    """Keep registry identity separate from a run's generation settings."""
+    if metadata.get("demo"):
+        return
+    data = {
+        k: v
+        for k, v in metadata.items()
+        if k not in {"generation", "system_prompt", "protocol", "cost_note"}
+    }
+    model_id = data["model_id"]
+    record = session.get(Model, model_id)
+    if record is None:
+        session.add(Model(id=model_id, data=data))
+        session.flush()
+    elif record.data != data:
+        raise ValueError("Model ID is already registered with different metadata")
+
+
 def register(
     session: Session, manifest: dict[str, Any], tasks: list[Task], fingerprint: str
 ) -> str:

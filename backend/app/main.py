@@ -10,11 +10,13 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.responses import Response as HTTPResponse
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from chemagent import __version__
 from chemagent.database.models import (
     Agent,
     BenchmarkTask,
@@ -26,6 +28,7 @@ from chemagent.database.models import (
 )
 from chemagent.database.queries import comparison, leaderboard, run_detail
 from chemagent.database.session import make_engine, sessions
+from chemagent.evaluation.export import export_zip
 
 
 class SubmissionInput(BaseModel):
@@ -53,7 +56,7 @@ def create_app(url: str | None = None) -> FastAPI:
 
     app = FastAPI(
         title="ChemAgent Index API",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
         description="Research preview. Public synthetic demonstration results only; no real-model ranking claims.",
     )
@@ -105,7 +108,7 @@ def create_app(url: str | None = None) -> FastAPI:
     @app.get("/health")
     def health(session: Session = Depends(db)) -> dict[str, str]:
         session.execute(text("SELECT 1"))
-        return {"status": "ok", "version": "0.1.0"}
+        return {"status": "ok", "version": __version__}
 
     @app.get("/api/v1/leaderboard")
     def ranking(
@@ -182,12 +185,42 @@ def create_app(url: str | None = None) -> FastAPI:
             raise HTTPException(404, "Public evaluation not found")
         return result
 
+    @app.get("/api/v1/evaluations")
+    def evaluations(session: Session = Depends(db)) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": r.id,
+                "model_id": r.model_id,
+                "status": r.status,
+                "created_at": r.created_at,
+                "scope": r.provenance.get("scope", "full"),
+                "demo": r.provenance["provider"].get("demo", False),
+                "summary": r.summary,
+            }
+            for r in session.scalars(
+                select(EvaluationRun).order_by(EvaluationRun.created_at.desc())
+            )
+            if r.provenance["visibility"] == "public"
+        ][:100]
+
     @app.get("/api/v1/compare")
     def compare(left: str, right: str, session: Session = Depends(db)) -> dict[str, Any]:
         try:
             return comparison(session, left, right)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/v1/evaluations/{run_id}/download")
+    def download(run_id: str, session: Session = Depends(db)) -> HTTPResponse:
+        try:
+            data = export_zip(session, run_id)
+        except ValueError as exc:
+            raise HTTPException(404, "Public evaluation not found") from exc
+        return HTTPResponse(
+            data,
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="chemagent-evaluation.zip"'},
+        )
 
     @app.get("/api/v1/snapshots/{snapshot_id}")
     def snapshot(snapshot_id: str, session: Session = Depends(db)) -> dict[str, Any]:

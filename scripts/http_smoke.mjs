@@ -15,6 +15,8 @@ for (const command of ['init-db','seed-demo']) {
   const child = spawnSync(python,['-m','chemagent.cli',command],{cwd:root,env,encoding:'utf8'});
   if(child.status!==0) throw new Error(child.stderr || child.stdout);
 }
+const smoke = spawnSync(python,['-m','chemagent.cli','evaluate','--model','demo-agent','--sample-size','5'],{cwd:root,env,encoding:'utf8'});
+if(smoke.status!==0) throw new Error(smoke.stderr || smoke.stdout);
 const backend=spawn(python,['-m','uvicorn','backend.app.main:app','--host','127.0.0.1','--port','8000'],{cwd:root,env,stdio:'ignore'});
 const frontend=spawn(process.execPath,[join(standalone,'server.js')],{cwd:standalone,env,stdio:'ignore'});
 async function ready(url) {
@@ -46,6 +48,14 @@ try {
   await expectPage('/compare','Compare paired tasks');
   await expectPage('/methodology','Chemistry Reliability Index');
   await expectPage('/submit','INTAKE NOT OPEN');
+  await expectPage('/runs','smoke');
+  const runs=await (await fetch('http://127.0.0.1:3000/api/v1/evaluations')).json();
+  const sample=runs.find(r=>r.scope==='smoke');
+  if(!sample || sample.summary.score!==null)throw new Error('Smoke run must not have an aggregate');
+  await expectPage(`/models/demo-agent?run=${sample.id}`,'SMOKE TEST');
+  const archive=await fetch(`http://127.0.0.1:3000/api/v1/evaluations/${sample.id}/download`);
+  const bytes=new Uint8Array(await archive.arrayBuffer());
+  if(!archive.ok || bytes[0]!==80 || bytes[1]!==75)throw new Error('Run artifact download failed');
   const registry=await (await fetch('http://127.0.0.1:8000/api/v1/benchmarks')).json();
   await expectPage('/benchmarks','PUBLIC DEVELOPMENT');
   await expectPage(`/benchmarks/${encodeURIComponent(registry[0].id)}`,'stress_tests_010');

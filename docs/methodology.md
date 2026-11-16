@@ -1,12 +1,13 @@
 # ChemAgent Index: methods for auditable evaluation of AI systems in chemistry
 
-**Software and scoring version:** 0.1.0  
-**Benchmark:** ChemAgentBench public development set v0.1.0  
+**Software version:** 0.2.0
+**Scoring version:** 0.1.0
+**Benchmark:** ChemAgentBench public development set v0.1.0
 **Status:** implementation methods draft; not peer-reviewed and not a scientific validation study
 
 ## Abstract
 
-ChemAgent Index provides a reproducible framework for chemistry-specific evaluation of AI models and agents. The architecture separates task definitions, provider requests, chemical validation, scoring, statistical analysis, storage and public presentation. The initial implementation comprises 60 original synthetic development tasks, three deterministic mock systems, RDKit validation, structured field rubrics, experimental reliability and reproducibility measures, and category-stratified cluster-bootstrap uncertainty. The release demonstrates functioning evaluation infrastructure. It does not establish real-model performance, clinical utility, chemical safety or external benchmark validity.
+ChemAgent Index provides a reproducible framework for chemistry-specific evaluation of AI models and agents. The architecture separates task definitions, provider requests, chemical validation, scoring, statistical analysis, storage and public presentation. The implementation comprises 60 original synthetic development tasks, digest-pinned local model inference, three separately labeled deterministic mock systems, RDKit validation, structured field rubrics, experimental reliability and reproducibility measures, and category-stratified cluster-bootstrap uncertainty. The release demonstrates functioning evaluation infrastructure. Individual runs report observed performance on the development collection. They do not establish clinical utility, chemical safety or external benchmark validity.
 
 ## Motivation
 
@@ -34,7 +35,7 @@ Future datasets require a source-specific license audit, a documented curation p
 
 ## Evaluation methodology
 
-The runner loads validated tasks and constructs public requests containing task identifier, prompt, supplied inputs and output schema. Reference answers and scoring rules are not sent to the provider. The mock provider solves the public inputs through deterministic rules and RDKit, then injects deterministic errors according to model ID, task ID and seed. This exercises the complete pipeline without commercial API access or fabricated model-performance claims.
+The runner loads validated tasks and constructs public requests containing task identifier, prompt, supplied inputs and output schema. Reference answers and scoring rules are not sent to the provider. The mock provider solves the public inputs through deterministic rules and RDKit, then injects deterministic errors according to model ID, task ID and seed. Local open-model runs use Ollama with the task schema as constrained JSON output. Model digest, runtime version and effective generation settings are retained. The five-task smoke mode produces task evidence without a full-benchmark aggregate or ranking eligibility.
 
 Responses are captured verbatim with a content hash. A strict parser rejects malformed JSON, duplicate keys, nonfinite JSON constants, oversized responses and invalid envelopes. Unknown answer keys cause a format failure; missing answer fields earn no credit. Provider transport failures retain partial run state rather than entering rankings. Successful task checkpoints survive resume. Resume requires matching model/provider identity, benchmark, policy, code, dependencies and execution settings. A PostgreSQL advisory lock or local POSIX lock prevents concurrent writers to a run.
 
@@ -76,9 +77,9 @@ A separate reproducibility checklist awards 40 points for valid structured outpu
 
 ## Limitations
 
-The benchmark is small, synthetic, public and template-based. Some categories contain few independent clusters. Objective fixtures favor constrained answers and cannot represent expert scientific decision-making. No real model is evaluated; mock behavior is known by construction. The implementation uses a local rate limiter and preview submission token, not full authentication or multi-tenant security. Snapshot immutability is enforced by application interfaces, not cryptographic external custody.
+The benchmark is small, synthetic, public and template-based. Some categories contain few independent clusters. Objective fixtures favor constrained answers and cannot represent expert scientific decision-making. Local open-model evaluations are available; mock behavior remains known by construction and is labeled separately. The implementation uses a local rate limiter and preview submission token, not full authentication or multi-tenant security. Snapshot immutability is enforced by application interfaces, not cryptographic external custody.
 
-Provider adapters other than mock are explicit extension points. Arena voting, expert review workflows, organization accounts, live evidence verification, billing and enterprise isolation are not operational products in this release.
+Ollama supports digest-pinned local inference. Commercial provider adapters remain explicit extension points. Arena voting, expert review workflows, organization accounts, live evidence verification, billing and enterprise isolation are not operational products in this release.
 
 ## Benchmark contamination
 
@@ -94,7 +95,7 @@ Method changes require version control and documented comparability decisions. M
 
 ## Future development
 
-Priority work is independently reviewing the starter tasks, adding tested real-provider contracts, conducting repeated stochastic evaluations, building live evidence services with failure/uncertainty states, and developing advanced expert-reviewed chemistry benchmarks. Public researcher accounts and review workflows should follow a security design review. Arena preference rankings must remain statistically and visually separate from objective benchmark rankings.
+Priority work is independently reviewing the starter tasks, extending provider contracts, conducting repeated stochastic evaluations, building live evidence services with failure/uncertainty states, and developing advanced expert-reviewed chemistry benchmarks. Public researcher accounts and review workflows should follow a security design review. Arena preference rankings must remain statistically and visually separate from objective benchmark rankings.
 
 ## Implementation references
 

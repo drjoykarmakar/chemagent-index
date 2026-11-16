@@ -4,7 +4,7 @@ ChemAgent Index is a research infrastructure preview. Its maintainers have not y
 
 ## Scientific control
 
-Benchmark editors propose tasks and document provenance, licensing, ambiguity, expected outputs and scientific limitations. Independent chemistry reviewers must approve scientific correctness before a benchmark is represented as externally validated. Expert tasks require rubrics and multiple blinded reviewers; that workflow is not implemented in v0.1.0.
+Benchmark editors propose tasks and document provenance, licensing, ambiguity, expected outputs and scientific limitations. Independent chemistry reviewers must approve scientific correctness before a benchmark is represented as externally validated. Expert tasks require rubrics and multiple blinded reviewers; that workflow is not implemented in v0.2.0.
 
 ## Methodology changes
 

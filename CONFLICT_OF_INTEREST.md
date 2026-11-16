@@ -11,4 +11,4 @@ For any future evaluation of a maintainer-developed model, agent or company prod
 5. Make the evaluation independently reproducible, subject to legitimate dataset restrictions.
 6. Never adjust category weights or suppress failed tasks to favor the system.
 
-A reviewer cannot certify their own system. Funders and commercial users receive no control over public ranking outcomes. This policy applies equally to DyeMind, NarcoticSense, BioAgent-X and any other system associated with maintainers if submitted in the future; none has been evaluated by this release.
+A reviewer cannot certify their own system. Funders and commercial users receive no control over public ranking outcomes.

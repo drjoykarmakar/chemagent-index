@@ -1,8 +1,8 @@
 # Security and deployment boundary
 
-v0.1.0 is a local research preview, not a hardened multi-tenant hosted service. Public endpoints are read-only except optional token-protected submission intake. Evaluations run only in trusted CLI workers. No arbitrary file uploads, submitted code, user-controlled URL fetches, or model execution are exposed through HTTP.
+v0.2.0 is a local research preview, not a hardened multi-tenant hosted service. Public endpoints are read-only except optional token-protected submission intake. Evaluations run only in trusted CLI workers. No arbitrary file uploads, submitted code, user-controlled URL fetches, or model execution are exposed through HTTP.
 
-Keep provider credentials and database URLs in environment variables, never task files, source, logs or browser bundles. The typed evaluation configuration forbids extra fields. The current provider is mock-only. Future providers must explicitly redact credentials from metadata and errors.
+Keep provider credentials and database URLs in environment variables, never task files, source, logs or browser bundles. The typed evaluation configuration forbids extra fields. The Ollama adapter uses a trusted operator-configured local endpoint and records model identity without credentials. Provider metadata and errors must exclude secrets.
 
 The API has bounded per-process request counting, body-size checks and typed input validation. These are local safeguards, not distributed abuse protection. Before public deployment, add TLS, trusted reverse-proxy configuration, stream/body limits at ingress, distributed rate limiting, authenticated roles, CSRF/session design as appropriate, monitoring, secret rotation, dependency monitoring and database backups. Submission bearer tokens are operator-issued preview access, not researcher/reviewer/admin RBAC.
 
@@ -10,4 +10,4 @@ Use a separate disposable database for tests. They clear application tables. Mig
 
 The application does not expose mutation endpoints for completed runs or snapshots; database administrators can still alter data. Strong audit guarantees require external append-only storage, signed artifacts and access controls.
 
-If a security issue is found after public hosting, use the repository's private vulnerability reporting feature once enabled. Do not post secrets, private tasks or exploitable production details in public issues. No security contact address has been fabricated for this preview.
+If a security issue is found after public hosting, use the repository's private vulnerability reporting feature once enabled. Do not post secrets, private tasks or exploitable production details in public issues.

@@ -1,56 +1,35 @@
-# Architecture and implementation plan — v0.1.0
+# Architecture
 
-## Existing state and assumptions
-The supplied workspace contained only the product brief, with no repository or credentials. This is a new monorepo. Python 3.11+ and Node 22+ are supported. PostgreSQL is the deployment database; SQLite is an explicit local/test option. No paid API, private dataset, public deployment, or external account is assumed. The release is a research infrastructure preview, not a scientifically validated ranking organization.
+ChemAgent Index is a modular monorepo with a Python evaluation worker, FastAPI read API and Next.js interface. PostgreSQL supports shared execution; SQLite supports local and disposable workflow runs.
 
-## Boundaries
-- `chemagent/benchmarks`: strict versioned task schemas, provenance and duplicate checks, public/private stores.
-- `chemagent/providers`: public requests only; providers never receive reference answers. Deterministic mock solver plus explicit unsupported adapter contracts.
-- `chemagent/chemistry`: RDKit descriptors, structures, fingerprints and structured validation errors.
-- `chemagent/scoring`: field rubrics, severity-weighted reliability proxy, immutable scoring policy.
-- `chemagent/statistics`: category-stratified cluster bootstrap, intervals and paired comparisons.
-- `chemagent/evaluation`: execution, bounded retry, checkpointing, audit artifacts, fingerprints.
-- `chemagent/database`: typed SQLAlchemy records and transaction boundaries. Alembic owns schema changes.
-- `backend/app`: read API, health checks and safe, disabled-by-default submission intake.
-- `frontend`: Next.js server-rendered pages with interactive filtering and comparisons; no embedded score fixtures.
-- `benchmarks`, `configs`: versioned scientific inputs, configuration and fingerprints.
+## Component boundaries
 
-The first implementation is a modular monolith. Evaluation workers are launched by CLI, not public HTTP requests. This keeps private benchmark material and provider credentials outside the public web process. Future workers can consume a queue without changing scorer/provider interfaces.
+| Component | Responsibility |
+|---|---|
+| `benchmarks` | Versioned task schema, integrity checks and public/private stores |
+| `providers` | Public request contracts, mock solver and digest-pinned Ollama inference |
+| `chemistry` | RDKit structures, descriptors and diagnostic checks |
+| `scoring` | Typed field rubrics and reliability/metadata proxies |
+| `statistics` | Cluster bootstrap and compatible paired comparisons |
+| `evaluation` | Checkpoints, retry, provenance, sampling and artifact exports |
+| `database` | Registry, run and evidence persistence; Alembic migrations |
+| `backend/app` | Public projections and optional submission intake |
+| `frontend` | Rankings, run inspection, downloads and comparisons |
 
-## Ordered phases
-1. Design: architecture, SQL schema, benchmark schema and scoring policy.
-2. Core: 60 authored synthetic tasks, independent mock solver, RDKit, scoring, statistics; test each boundary.
-3. Storage: PostgreSQL-compatible migrations, append-only finished runs and snapshots, resumable failures, CLI and REST API; exercise migrations and API.
-4. Web: homepage, rankings, profile/task inspection, benchmark explorer, methodology, comparison and submission status; typecheck and production build.
-5. Delivery: Docker Compose, CI, governance, scientific limitations, runbook and release evidence; package a clean repository archive.
+The CLI launches evaluation workers. The public API cannot start inference, change provider endpoints or execute model-generated code. Provider requests contain only the task prompt, inputs and output schema; references and rubrics stay inside the evaluator. Ollama performs structured local generation on the model-only track. RDKit validates answers in the evaluator and is not an inference tool in that track.
 
-## Coverage and non-goals
-The starter six-category profile is explicitly different from the full nine-category vision. No spectroscopy competency, synthesis feasibility, drug potency, clinical safety, citation truth on the live internet, or expert validation is inferred from simple fixtures. Human review, federated providers, accounts/RBAC, expert adjudication, arena voting, billing and enterprise isolation are separate planned phases. Schema reservations do not imply working products.
+## Run identity
 
-## Data flow
-Task store → public request → adapter → captured response → strict JSON parser → typed rubric and RDKit validation → task score → stratified statistics → transactional checkpoint → immutable result → public read model.
+A run records benchmark bytes, selected task IDs, policy, configuration, model digest, provider protocol, runtime version, source hash and dependency versions. Identity mismatches prevent resume. Full runs and samples have different identities. Model registry entries cannot reuse an ID for different metadata.
 
-## Integrity and security
-Run identity records benchmark bytes, scoring policy, configuration, dependency versions, adapter/model version, tool permissions and git revision. Resume rejects changed inputs. Failed/incomplete runs never enter rankings. Hidden data is read only from an operator-configured directory outside the repository and is not served by API. Mock providers cannot run against hidden sets. No arbitrary code execution, URL fetches, user-controlled provider endpoints, or uploads are exposed in the public API.
+Successful tasks commit atomically with responses, scores and validation results. Failures leave a partial run with completed checkpoints. POSIX locks or PostgreSQL advisory locks serialize writers. Completed results and snapshots are immutable through application interfaces; database administrators retain write authority.
 
-## Component relationships
+## Public projections
 
-```mermaid
-flowchart TD
-    Public["Public task store"] --> Worker["Evaluation worker"]
-    Private["Private task store"] --> Worker
-    Registry["Versioned registries"] --> Worker
-    Worker --> Provider["Provider adapter"]
-    Provider --> Parser["Structured parser"]
-    Parser --> Chemistry["RDKit validation"]
-    Parser --> Rubric["Typed scoring rubric"]
-    Chemistry --> Results["Scores and diagnostics"]
-    Rubric --> Results
-    Results --> Stats["Cluster bootstrap"]
-    Results --> DB["PostgreSQL artifacts"]
-    Stats --> DB
-    DB --> API["Public projections"]
-    API --> Web["Next.js interface"]
-```
+Only completed, full, public runs enter rankings. A ranking contains one compatible execution cohort; mock and real-model runs remain separate. Smoke tests and partial runs remain inspectable through run history and artifact downloads without a full-benchmark aggregate.
 
-Private reference answers stay in the trusted worker boundary. The provider receives only public requests. Private task bodies and responses are excluded from public projections. This diagram describes component boundaries, not a claim that all planned commercial providers are implemented.
+Private task bodies and results are excluded from public APIs and exports. Private evaluation remains a storage abstraction, not an enterprise tenancy or access-control system.
+
+## Scientific scope
+
+The six-domain starter benchmark is distinct from a comprehensive chemistry index. Advanced synthesis feasibility, spectroscopy, experimental reproducibility, live literature verification and expert adjudication require separate datasets and validation. Repeated stochastic evaluations and multi-system inference are future statistical work.

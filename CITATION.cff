@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: Karmakar
     given-names: Joy
-version: 0.1.0
+version: 0.2.0
 date-released: 2026-11-16
 license: MIT
-abstract: "Research preview of reproducible chemistry AI evaluation infrastructure. Includes original synthetic public development tasks and deterministic demonstration systems. No real-model benchmark performance is claimed."
-# Add repository-code, URL and DOI only after a real public release and archive exist.
+abstract: "Research preview of reproducible chemistry AI evaluation infrastructure. Includes digest-pinned local model evaluation, original synthetic public development tasks, and separately labeled demonstration systems."
+repository-code: "https://github.com/drjoykarmakar/chemagent-index"

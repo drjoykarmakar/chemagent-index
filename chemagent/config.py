@@ -28,11 +28,21 @@ class EvaluationConfig(BaseModel):
     track: Literal["model_only", "model_plus_tools", "agentic_system"] = "model_plus_tools"
     timeout: float = Field(default=30, gt=0, le=300)
     retries: int = Field(default=2, ge=0, le=5)
+    provider: Literal["mock", "ollama"] = "mock"
+    sample_size: int | None = Field(default=None, ge=1)
+    ollama_model: str = "qwen2.5:0.5b"
+    ollama_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    context_window: int = Field(default=4096, ge=1024, le=32768)
+    cpu_threads: int = Field(default=2, ge=1, le=64)
 
     @model_validator(mode="after")
     def validate_tools(self) -> "EvaluationConfig":
         if self.track == "model_only" and self.tools:
             raise ValueError("model_only track cannot permit tools")
+        if self.provider == "ollama" and (self.track != "model_only" or self.tools):
+            raise ValueError("Ollama evaluations require the model_only track without tools")
+        if self.provider == "ollama" and not self.ollama_digest:
+            raise ValueError("Ollama evaluations require a pinned model digest")
         return self
 
 

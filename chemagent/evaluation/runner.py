@@ -4,6 +4,7 @@ import importlib.metadata
 import json
 import logging
 import platform
+import random
 import subprocess
 import time
 from dataclasses import asdict
@@ -11,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import Engine, select
 
+from chemagent.benchmarks.schema import Task
 from chemagent.benchmarks.store import TaskStore, public_store
 from chemagent.config import ROOT, EvaluationConfig, digest, load_policy
 from chemagent.database.models import (
@@ -24,11 +26,12 @@ from chemagent.database.models import (
     now,
     uid,
 )
-from chemagent.database.registry import register
+from chemagent.database.registry import register, register_model
 from chemagent.database.session import sessions
 from chemagent.evaluation.locking import run_lock
 from chemagent.providers.base import BaseModelAdapter, PublicRequest
 from chemagent.providers.mock import MockAdapter
+from chemagent.providers.ollama import OllamaAdapter
 from chemagent.scoring.engine import score_task
 from chemagent.statistics.bootstrap import public_summary, summarize
 
@@ -74,7 +77,17 @@ def run_evaluation(
     adapter: BaseModelAdapter | None = None,
     store: TaskStore | None = None,
     resume: str | None = None,
+    new_run_id: str | None = None,
 ) -> str:
+    config = EvaluationConfig.model_validate(config.model_dump())
+    if adapter is None and config.provider == "ollama":
+        local = OllamaAdapter(config)
+        try:
+            return run_evaluation(
+                engine, config, adapter=local, store=store, resume=resume, new_run_id=new_run_id
+            )
+        finally:
+            local.close()
     adapter = adapter or MockAdapter(config.model)
     metadata = adapter.metadata()
     if metadata.get("model_id") != config.model:
@@ -82,11 +95,31 @@ def run_evaluation(
     if not set(metadata.get("required_tools", [])).issubset(config.tools):
         raise ValueError("Adapter requires unpermitted tools")
     manifest, tasks, benchmark_hash = (store or public_store(config.benchmark)).load()
+    all_tasks = tasks
+    if config.sample_size is not None:
+        if config.sample_size > len(tasks):
+            raise ValueError("Sample size exceeds benchmark size")
+        # Deterministic round-robin sampling broadens smoke coverage across categories.
+        rng = random.Random(config.seed)
+        groups = {
+            category: [t for t in tasks if t.category == category]
+            for category in sorted({t.category for t in tasks})
+        }
+        for group in groups.values():
+            rng.shuffle(group)
+        categories = list(groups)
+        rng.shuffle(categories)
+        selected_tasks: list[Task] = []
+        while len(selected_tasks) < config.sample_size:
+            for category in categories:
+                if groups[category] and len(selected_tasks) < config.sample_size:
+                    selected_tasks.append(groups[category].pop())
+        tasks = sorted(selected_tasks, key=lambda t: t.task_id)
     if metadata.get("demo") and any(t.visibility == "private" for t in tasks):
         raise ValueError("Mock evaluation is public-development-only")
     policy = load_policy()
     env = environment()
-    cohort_config = config.model_dump(exclude={"model"})
+    cohort_config = config.model_dump(exclude={"model", "ollama_model", "ollama_digest"})
     cohort = digest(
         {
             "benchmark": benchmark_hash,
@@ -96,13 +129,16 @@ def run_evaluation(
             "dependencies": env["dependencies"],
             "python": env["python"],
             "demo": metadata.get("demo", False),
+            "protocol": metadata.get("protocol"),
+            "selected_tasks": [t.task_id for t in tasks],
         }
     )
     identity = digest({"cohort": cohort, "adapter": metadata})
-    run_id = resume or uid()
+    run_id = resume or new_run_id or uid()
     factory = sessions(engine)
     with run_lock(engine, run_id), factory() as session:
-        version_id = register(session, manifest, tasks, benchmark_hash)
+        version_id = register(session, manifest, all_tasks, benchmark_hash)
+        register_model(session, metadata)
         if resume:
             run = session.get(EvaluationRun, resume)
             if run is None or run.status == "completed" or run.identity != identity:
@@ -127,6 +163,10 @@ def run_evaluation(
                     "benchmark_hash": benchmark_hash,
                     "scoring_hash": digest(policy),
                     "policy": policy,
+                    "scope": "smoke" if config.sample_size is not None else "full",
+                    "rank_eligible": config.sample_size is None,
+                    "selected_task_ids": [t.task_id for t in tasks],
+                    "benchmark_task_count": len(all_tasks),
                     "visibility": "public"
                     if all(t.visibility == "public" for t in tasks)
                     else "private",
@@ -203,18 +243,34 @@ def run_evaluation(
                     .where(Response.run_id == run_id)
                 )
             )
-            stats = {
-                metric: public_summary(
-                    summarize(
-                        [r.data for r in rows],
-                        policy["weights"],
-                        seed=config.seed,
-                        resamples=policy["bootstrap_resamples"],
-                        metric=metric,
+            stats: dict[str, Any] = (
+                {
+                    metric: public_summary(
+                        summarize(
+                            [r.data for r in rows],
+                            policy["weights"],
+                            seed=config.seed,
+                            resamples=policy["bootstrap_resamples"],
+                            metric=metric,
+                        )
                     )
-                )
-                for metric in ["score", "cri", "reproducibility"]
-            }
+                    for metric in ["score", "cri", "reproducibility"]
+                }
+                if config.sample_size is None
+                else {
+                    "score": None,
+                    "cri": None,
+                    "reproducibility": None,
+                }
+            )
+            stats.update(
+                {
+                    "scope": run.provenance["scope"],
+                    "completed_tasks": len(rows),
+                    "benchmark_task_count": len(all_tasks),
+                    "rank_eligible": run.provenance["rank_eligible"],
+                }
+            )
             responses = list(session.scalars(select(Response).where(Response.run_id == run_id)))
             costs = [r.data["cost_usd"] for r in responses]
             cost = sum(costs) if all(c is not None for c in costs) else None
@@ -228,7 +284,7 @@ def run_evaluation(
                 if all(r.data["output_tokens"] is not None for r in responses)
                 else None,
                 "performance_per_dollar": stats["score"]["mean"] / cost
-                if cost is not None and cost > 0
+                if cost is not None and cost > 0 and stats["score"] is not None
                 else None,
                 "tool_calls": sum(len(r.data["tool_calls"]) for r in responses),
             }

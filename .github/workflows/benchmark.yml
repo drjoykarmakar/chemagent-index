@@ -1,0 +1,85 @@
+name: Run benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Evaluation scope
+        required: true
+        type: choice
+        default: smoke
+        options:
+          - smoke
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: sqlite:///./results/evaluation.db
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_MODELS: ${{ github.workspace }}/.ollama/models
+      BENCHMARK_SCOPE: ${{ inputs.scope }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install evaluator
+        run: |
+          mkdir -p results
+          pip install -r requirements.lock
+          pip install -e . --no-deps
+          chemagent init-db
+      - name: Install pinned Ollama runtime
+        run: |
+          curl --fail --location --retry 3 -o /tmp/ollama.tar.zst https://github.com/ollama/ollama/releases/download/v0.40.16/ollama-linux-amd64.tar.zst
+          echo "87bfafb2acbc89b2e6a1be0a9043de6aa75fb450696f86bc426e65fc448f788d  /tmp/ollama.tar.zst" | sha256sum --check
+          sudo tar --zstd -xf /tmp/ollama.tar.zst -C /usr/local --exclude='lib/ollama/cuda*' --exclude='lib/ollama/vulkan*'
+          rm /tmp/ollama.tar.zst
+          ollama serve > results/ollama.log 2>&1 &
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:11434/api/version; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+      - name: Download model
+        run: ollama pull qwen2.5:0.5b
+      - name: Evaluate and export
+        run: |
+          set -o pipefail
+          args=()
+          if [ "$BENCHMARK_SCOPE" = smoke ]; then
+            args+=(--sample-size 5)
+          fi
+          chemagent evaluate --config configs/ollama.yaml --output-dir results "${args[@]}" 2>&1 | tee results/evaluation.log
+      - name: Publish run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemagent-qwen2.5-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Summarize evaluation
+        if: always()
+        run: python scripts/summarize_run.py

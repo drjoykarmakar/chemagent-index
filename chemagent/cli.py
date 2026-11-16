@@ -12,9 +12,11 @@ from alembic.config import Config
 from chemagent.benchmarks.store import public_store
 from chemagent.chemistry.rdkit_service import validate_smiles
 from chemagent.config import ROOT, load_config
+from chemagent.database.models import uid
 from chemagent.database.queries import leaderboard as query_leaderboard
-from chemagent.database.queries import snapshot
+from chemagent.database.queries import run_detail, snapshot
 from chemagent.database.session import make_engine, sessions
+from chemagent.evaluation.export import export_zip
 from chemagent.evaluation.runner import run_evaluation
 from chemagent.providers.mock import DEMOS
 
@@ -40,19 +42,50 @@ def init_db() -> None:
 
 @app.command()
 def evaluate(
-    model: str = "demo-agent",
-    benchmark: str = "chemagentbench-v0.1",
+    model: str | None = None,
+    benchmark: str | None = None,
     config: Annotated[Path | None, typer.Option()] = None,
     resume: str | None = None,
+    sample_size: Annotated[int | None, typer.Option(min=1)] = None,
+    output_dir: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
     """Evaluate a registered model; prints the immutable run ID."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     settings = load_config(config)
-    settings.model = model
-    settings.benchmark = benchmark
+    if model is not None:
+        settings.model = model
+    if benchmark is not None:
+        settings.benchmark = benchmark
+    if sample_size is not None:
+        settings.sample_size = sample_size
+    engine = make_engine()
+    run_id = resume or uid()
+    try:
+        output({"run_id": run_evaluation(engine, settings, resume=resume, new_run_id=run_id)})
+    finally:
+        try:
+            if output_dir is not None:
+                with sessions(engine)() as session:
+                    if run_detail(session, run_id) is not None:
+                        output_dir.mkdir(parents=True, exist_ok=True)
+                        target = output_dir / f"{run_id}-{uid()[:8]}.zip"
+                        with target.open("xb") as handle:
+                            handle.write(export_zip(session, run_id))
+                        output({"run_id": run_id, "artifact": str(target)})
+        finally:
+            engine.dispose()
+
+
+@app.command("export")
+def export_run(run_id: str, destination: Path) -> None:
+    """Export a public run, including partial checkpoints, to a new ZIP file."""
     engine = make_engine()
     try:
-        output({"run_id": run_evaluation(engine, settings, resume=resume)})
+        with sessions(engine)() as session:
+            data = export_zip(session, run_id)
+        with destination.open("xb") as handle:
+            handle.write(data)
+        output({"run_id": run_id, "artifact": str(destination)})
     finally:
         engine.dispose()
 

@@ -1,10 +1,18 @@
 name: quality
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   python:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     services:
       postgres:
         image: postgres:16
@@ -12,62 +20,151 @@ jobs:
           POSTGRES_USER: chemagent
           POSTGRES_PASSWORD: ci-password
           POSTGRES_DB: chemagent_test
-        ports: ['5432:5432']
+        ports:
+          - 5432:5432
         options: >-
-          --health-cmd 'pg_isready -U chemagent -d chemagent_test'
-          --health-interval 5s --health-timeout 3s --health-retries 10
+          --health-cmd "pg_isready -U chemagent -d chemagent_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
           cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements-dev.lock && pip install -e . --no-deps
-      - run: ruff check . && ruff format --check .
-      - run: mypy chemagent backend
-      - run: pytest --cov --cov-report=term-missing
-      - run: pytest
+          cache-dependency-path: requirements-dev.lock
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.lock
+          pip install -e . --no-deps
+
+      - name: Check lint and formatting
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Check Python types
+        run: mypy chemagent backend
+
+      - name: Run tests with SQLite and coverage
+        run: pytest --cov --cov-report=term-missing
+
+      - name: Run tests with PostgreSQL
         env:
           TEST_DATABASE_URL: postgresql+psycopg://chemagent:ci-password@localhost:5432/chemagent_test
-      - run: pip-audit -r requirements.lock --no-deps --disable-pip
-      - run: python scripts/check_public_data.py
+        run: pytest
+
+      - name: Audit Python dependencies
+        run: pip-audit -r requirements.lock --no-deps --disable-pip
+
+      - name: Check public benchmark data
+        run: python scripts/check_public_data.py
+
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     defaults:
       run:
         working-directory: frontend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint && npm run typecheck && npm run build
-      - run: npm audit --audit-level=moderate
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check frontend lint
+        run: npm run lint
+
+      - name: Check TypeScript
+        run: npm run typecheck
+
+      - name: Build frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=moderate
+
   compose:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
     steps:
-      - uses: actions/checkout@v4
-      - run: docker compose config --quiet
-      - run: docker compose up --build -d --wait
-      - run: curl --fail http://localhost:8000/health && curl --fail http://localhost:3000/leaderboard
-      - if: always()
-        run: docker compose logs && docker compose down -v
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build and start application
+        run: docker compose up --build -d --wait --wait-timeout 300
+
+      - name: Check backend and website
+        run: |
+          curl --fail --retry 5 --retry-delay 3 http://localhost:8000/health
+          curl --fail --retry 5 --retry-delay 3 http://localhost:3000/leaderboard
+
+      - name: Show container logs
+        if: always()
+        run: docker compose logs
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
+
   integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - uses: actions/setup-node@v4
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.lock && pip install -e . --no-deps
-      - run: npm ci && npm run build
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock
+          pip install -e . --no-deps
+
+      - name: Install and build frontend
         working-directory: frontend
-      - run: node scripts/http_smoke.mjs
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run application integration checks
+        run: node scripts/http_smoke.mjs
