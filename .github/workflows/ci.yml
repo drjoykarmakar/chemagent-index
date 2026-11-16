@@ -5,7 +5,7 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
-        services:
+    services:
       postgres:
         image: postgres:16
         env:
