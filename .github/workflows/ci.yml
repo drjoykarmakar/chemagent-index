@@ -1,0 +1,73 @@
+name: quality
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: chemagent
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: chemagent_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U chemagent -d chemagent_test'
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements-dev.lock && pip install -e . --no-deps
+      - run: ruff check . && ruff format --check .
+      - run: mypy chemagent backend
+      - run: pytest --cov --cov-report=term-missing
+      - run: pytest
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://chemagent:ci-password@localhost:5432/chemagent_test
+      - run: pip-audit -r requirements.lock --no-deps --disable-pip
+      - run: python scripts/check_public_data.py
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint && npm run typecheck && npm run build
+      - run: npm audit --audit-level=moderate
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait
+      - run: curl --fail http://localhost:8000/health && curl --fail http://localhost:3000/leaderboard
+      - if: always()
+        run: docker compose logs && docker compose down -v
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.lock && pip install -e . --no-deps
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: node scripts/http_smoke.mjs
