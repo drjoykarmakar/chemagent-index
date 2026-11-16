@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this infrastructure, cite the software version and exact benchmark/snapshot fingerprints."
+title: "ChemAgent Index: Independent Benchmarking of Artificial Intelligence for Chemistry"
+type: software
+authors:
+  - family-names: Karmakar
+    given-names: Joy
+version: 0.1.0
+date-released: 2026-11-16
+license: MIT
+abstract: "Research preview of reproducible chemistry AI evaluation infrastructure. Includes original synthetic public development tasks and deterministic demonstration systems. No real-model benchmark performance is claimed."
+# Add repository-code, URL and DOI only after a real public release and archive exist.

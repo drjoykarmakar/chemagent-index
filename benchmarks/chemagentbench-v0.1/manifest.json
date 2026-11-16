@@ -1,0 +1,33 @@
+{
+  "benchmark_id": "chemagentbench",
+  "benchmark_name": "ChemAgentBench public development set",
+  "benchmark_version": "0.1.0",
+  "category": "multidomain_starter",
+  "task_type": "structured_json",
+  "description": "60 authored synthetic software-validation fixtures, not a validated model ranking benchmark.",
+  "dataset_source": "original synthetic",
+  "license": "CC0-1.0",
+  "citation": null,
+  "DOI": null,
+  "release_date": "2026-11-16",
+  "maintainer": "ChemAgent Index maintainers",
+  "sample_count": 60,
+  "public_samples": 60,
+  "private_samples": 0,
+  "difficulty_distribution": {
+    "introductory": 49,
+    "intermediate": 11,
+    "advanced": 0,
+    "expert": 0
+  },
+  "evaluation_method": "deterministic typed rubric and RDKit",
+  "scoring_method": "starter-six-domain / scoring v0.1.0",
+  "known_limitations": [
+    "Pending independent expert review",
+    "Public tasks have high contamination risk",
+    "No expert-level or spectroscopy tasks",
+    "Synthetic fixtures do not establish real-world capability",
+    "Small number of independent template clusters"
+  ],
+  "tasks_sha256": "d652b57e82e3c2d4901ca794f641a686929a8901de80cc58a14ab59a1a7e10d3"
+}

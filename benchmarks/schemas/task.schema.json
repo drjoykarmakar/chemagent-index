@@ -1,0 +1,283 @@
+{
+  "$defs": {
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "license": {
+          "title": "License",
+          "type": "string"
+        },
+        "citation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Citation"
+        },
+        "DOI": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Doi"
+        },
+        "original_dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Original Dataset"
+        },
+        "curation_method": {
+          "title": "Curation Method",
+          "type": "string"
+        },
+        "curator": {
+          "title": "Curator",
+          "type": "string"
+        },
+        "date_added": {
+          "format": "date",
+          "title": "Date Added",
+          "type": "string"
+        },
+        "validation_status": {
+          "enum": [
+            "draft",
+            "machine_checked",
+            "expert_reviewed"
+          ],
+          "title": "Validation Status",
+          "type": "string"
+        },
+        "synthetic": {
+          "title": "Synthetic",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source",
+        "license",
+        "citation",
+        "DOI",
+        "original_dataset",
+        "curation_method",
+        "curator",
+        "date_added",
+        "validation_status",
+        "synthetic"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "RubricField": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "number",
+            "string",
+            "boolean",
+            "list"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "weight": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "severity": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Severity",
+          "type": "number"
+        },
+        "tolerance": {
+          "default": 0.001,
+          "exclusiveMinimum": 0,
+          "title": "Tolerance",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "RubricField",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,80}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "chemistry_reasoning",
+        "medicinal_chemistry",
+        "molecular_validation",
+        "synthesis_reasoning",
+        "literature_reliability",
+        "stress_tests"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "cluster_id": {
+      "title": "Cluster Id",
+      "type": "string"
+    },
+    "difficulty": {
+      "enum": [
+        "introductory",
+        "intermediate",
+        "advanced",
+        "expert"
+      ],
+      "title": "Difficulty",
+      "type": "string"
+    },
+    "prompt": {
+      "minLength": 20,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "inputs": {
+      "additionalProperties": true,
+      "title": "Inputs",
+      "type": "object"
+    },
+    "expected_output_schema": {
+      "additionalProperties": true,
+      "title": "Expected Output Schema",
+      "type": "object"
+    },
+    "reference_answer": {
+      "additionalProperties": true,
+      "title": "Reference Answer",
+      "type": "object"
+    },
+    "rubric": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RubricField"
+      },
+      "title": "Rubric",
+      "type": "object"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "publication_date": {
+      "format": "date",
+      "title": "Publication Date",
+      "type": "string"
+    },
+    "known_public_source": {
+      "title": "Known Public Source",
+      "type": "boolean"
+    },
+    "training_data_risk": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "unknown"
+      ],
+      "title": "Training Data Risk",
+      "type": "string"
+    },
+    "contamination_risk": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "unknown"
+      ],
+      "title": "Contamination Risk",
+      "type": "string"
+    },
+    "review_status": {
+      "enum": [
+        "pending_expert",
+        "reviewed"
+      ],
+      "title": "Review Status",
+      "type": "string"
+    },
+    "validity_status": {
+      "enum": [
+        "machine_checked",
+        "expert_checked"
+      ],
+      "title": "Validity Status",
+      "type": "string"
+    },
+    "evaluation_method": {
+      "title": "Evaluation Method",
+      "type": "string"
+    },
+    "known_ambiguity": {
+      "title": "Known Ambiguity",
+      "type": "string"
+    },
+    "visibility": {
+      "default": "public",
+      "enum": [
+        "public",
+        "private"
+      ],
+      "title": "Visibility",
+      "type": "string"
+    },
+    "allowed_citations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Citations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task_id",
+    "category",
+    "cluster_id",
+    "difficulty",
+    "prompt",
+    "inputs",
+    "expected_output_schema",
+    "reference_answer",
+    "rubric",
+    "provenance",
+    "publication_date",
+    "known_public_source",
+    "training_data_risk",
+    "contamination_risk",
+    "review_status",
+    "validity_status",
+    "evaluation_method",
+    "known_ambiguity"
+  ],
+  "title": "Task",
+  "type": "object"
+}

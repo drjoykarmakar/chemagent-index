@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: chemagent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_DB: chemagent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U chemagent -d chemagent']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  init:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://chemagent:${POSTGRES_PASSWORD:-local-development-only}@postgres:5432/chemagent
+    command: [sh, -c, 'chemagent init-db && chemagent seed-demo']
+    depends_on:
+      postgres:
+        condition: service_healthy
+  backend:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://chemagent:${POSTGRES_PASSWORD:-local-development-only}@postgres:5432/chemagent
+    ports:
+      - '127.0.0.1:8000:8000'
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  pgdata:

@@ -1,0 +1,25 @@
+version: 0.1.0
+profile: starter-six-domain
+label: ChemAgentBench starter index
+weights:
+  chemistry_reasoning: 1
+  medicinal_chemistry: 1
+  molecular_validation: 1
+  synthesis_reasoning: 1
+  literature_reliability: 1
+  stress_tests: 1
+reliability:
+  error_weight: 0.8
+  calibration_weight: 0.2
+bootstrap_resamples: 2000
+# Reserved full profile; not used for the starter benchmark.
+future_full_profile:
+  chemistry_reasoning: 0.15
+  medicinal_chemistry: 0.15
+  molecular_design: 0.15
+  synthetic_chemistry: 0.15
+  spectroscopy: 0.10
+  literature_intelligence: 0.10
+  reliability: 0.10
+  reproducibility: 0.05
+  safety: 0.05
